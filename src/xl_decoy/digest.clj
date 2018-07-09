@@ -61,6 +61,9 @@
 (defn minpeplen [peps len]
   (filter (fn [item] (>= (count item) len)) peps))
 
+(defn maxpeplen [peps len]
+  (filter (fn [item] (<= (count item) len)) peps))
+
 (defn n-missed [peps n]
   (if (<= (count peps) n)
     nil
