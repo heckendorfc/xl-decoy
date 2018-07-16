@@ -7,7 +7,7 @@
        (map clojure.string/join)))
 
 (defn twopepmasses [pep]
-  (map (fn [px] (pepmass px 0)) (twopeps pep)))
+  (map #(pepmass % 0) (twopeps pep)))
 ; (twopepmasses (minpeplen pep 4))
 
 (defn rndprot [pseq]
@@ -36,7 +36,7 @@
   ([pattern in] (grep pattern in false))
   ([pattern in invert]
    (let [fun (if invert remove filter)]
-     (fun (fn [x] (re-matches pattern (str x))) in))))
+     (fun #(re-matches pattern (str %)) in))))
 ;(grep #".*test.*" '("matchingteststring" "nonmatching"))
 
 (defn list-files [dir pattern]
@@ -48,30 +48,52 @@
 ;(list-files "resources" #".*txt")
 
 (defn readseq [file]
-  (let [oneseq (fn [x] (clojure.string/join
-                         (grep #"[^ACDEFGHIKLMNPQRSTUVWY]" (slurp x) true)))]
+  (let [f-exist #(.exists (clojure.java.io/as-file %))
+        safe-slurp #(if (f-exist %) (slurp %) "")
+        oneseq #(clojure.string/join
+                   (grep #"[^ACDEFGHIKLMNPQRSTUVWY]" (safe-slurp %) true))]
     (if (= (type file) java.lang.String)
       (list (oneseq file))
       (map oneseq file))))
 ;(readseq "resources/sequence.txt")
 
-(defn makedecoy [file maxiter]
-  (let [pseq (readseq file)
-        mkpep (fn [sq] (-> sq
-                           (digest #"[KR]" #"[P]")
-                           (missed-cleavages 1)
-                           (minpeplen 5)
-                           (maxpeplen 20)))
-        tgt (->> (for [pi (map mkpep pseq)] (twopepmasses pi))
-                 (flatten)
-                 (sort-by +)
-                 (into []))]
-    (for [pi pseq]
-      (loop [iter maxiter]
-        (if (zero? iter)
-          false
-          (let [dseq (rndprot pi)
-                dcy (mkpep dseq)]
-            (if (too-similar tgt (into [] (twopepmasses dcy)))
-              (recur (dec iter))
-              dseq)))))))
+(defn decoy-filename [file]
+  (map clojure.string/join (map #(concat % ".decoy") file)))
+
+(defn makedecoy 
+  ([file maxiter] (makedecoy file maxiter (decoy-filename file)))
+  ([file maxiter dfile]
+   (let [pseq (readseq file)
+         mkpep (fn [sq] (-> sq
+                            (digest #"[KR]" #"[P]")
+                            (missed-cleavages 1)
+                            (minpeplen 5)
+                            (maxpeplen 20)))
+         tgt (->> (for [pi (map mkpep pseq)] (twopepmasses pi))
+                  (flatten)
+                  (sort-by +)
+                  (into []))
+         single-decoy (fn [p-ind]
+                        (let [pi (nth pseq p-ind)
+                              old-dseq (->> p-ind 
+                                            (nth dfile)
+                                            (readseq)
+                                            (first))]
+                          (if (> (count old-dseq) 0) ; decoy file contains a seq already -- recycle
+                            old-dseq
+                            (loop [iter maxiter]
+                              (if (zero? iter)
+                                false
+                                (let [dseq (rndprot pi)
+                                      dcy (mkpep dseq)]
+                                  (if (too-similar tgt (into [] (twopepmasses dcy)))
+                                    (recur (dec iter))
+                                    dseq)))))))]
+     (pmap single-decoy (range 0 (count file))))))
+
+(defn savedecoy [file db]
+  (if  (< 0  (count file))
+    (let [first-file (first file)
+          first-file-data (if (false? first-file) "" first-file)]
+      (spit  (first file)  (first db))
+      (recur  (rest file)  (rest db)))))
