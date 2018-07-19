@@ -10,8 +10,16 @@
   (map #(pepmass % 0) (twopeps pep)))
 ; (twopepmasses (minpeplen pep 4))
 
-(defn rndprot [pseq]
+(defn shuffleprot [pseq]
   (->> (clojure.string/split pseq #"") (shuffle) (clojure.string/join)))
+
+;TODO use AA frequencies
+(defn rndprot [pseq]
+  (let [nch (count pseq)
+        aas (keys xl-decoy.digest/aamap)
+        kvec (into []  (remove #(re-matches #"[OU]"  (str %)) aas))
+        aas (take nch  (repeatedly #(kvec (rand-int 20))))]
+    (clojure.string/join aas)))
 
 (defn tolcmp [a b]
   (if (< (Math/abs (- a b)) 0.01)
@@ -84,7 +92,7 @@
                             (loop [iter maxiter]
                               (if (zero? iter)
                                 false
-                                (let [dseq (rndprot pi)
+                                (let [dseq (shuffleprot pi)
                                       dcy (mkpep dseq)]
                                   (if (too-similar tgt (into [] (twopepmasses dcy)))
                                     (recur (dec iter))
