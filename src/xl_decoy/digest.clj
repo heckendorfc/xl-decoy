@@ -33,22 +33,16 @@
       (recur oa (+ mass (aamap fa))))))
 ; (pepmass "AC" 0)
 
-(defn partition-between 
-  ;https://gist.github.com/davidminor/769758
-  "Splits coll into a lazy sequence of lists, with partition 
-  boundaries between items where (f item1 item2) is true.
-  (partition-between = '(1 2 2 3 4 4 4 5)) =>
-  ((1 2) (2 3 4) (4) (4 5))"
-  [f coll]
-  (lazy-seq
-    (when-let [s (seq coll)]
-      (let [fst (first s)]
-        (if-let [rest-seq (next s)]
-          (if (f fst (first rest-seq))
-            (cons (list fst) (partition-between f rest-seq))
-            (let [rest-part (partition-between f rest-seq)]
-              (cons (cons fst (first rest-part)) (rest rest-part))))
-          (list (list fst)))))))
+(defn partition-between [f coll]
+  (loop [hold [(first coll)]
+         rst (rest coll)
+         ret []]
+    (let [fst (last hold)
+          sec (first rst)]
+      (cond
+        (empty? rst) ret
+        (f fst sec) (recur [sec] (rest rst) (conj ret hold))
+        :else (recur (conj hold sec) (rest rst) ret)))))
 
 (defn cleaves? [a b spec exc]
   (and (re-matches spec (str a)) (not (re-matches exc (str b)))))
